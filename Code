@@ -1,0 +1,115 @@
+# library for hashing ---> used to create SHA-1 of the password
+import hashlib
+# library to make HTTP requests and call the API
+import requests
+# library to securely take password input --->(hidden on screen)
+import getpass
+# library for pattern matching used to ---> check password rules
+import re
+
+# function to check if the password appeared in known data breaches
+def check_password_pwned(password):
+    try:
+        # convert the password into SHA-1 hash
+        sha1_password = hashlib.sha1(password.encode('utf-8')).hexdigest().upper()
+
+        # take the first 5 characters of the hash (for secure API search)
+        sha1_prefix = sha1_password[:5]
+
+        # API URL that returns leaked passwords starting with the given prefix
+        api_url = f"https://api.pwnedpasswords.com/range/{sha1_prefix}"
+
+        # add a User-Agent header so the server accepts the request
+        headers = {'User-Agent': 'PasswordChecker/1.0'}
+
+        # send the request and get the response from the API
+        response = requests.get(api_url, headers=headers, timeout=5)
+
+        # if the prefix does not exist at all
+        if response.status_code == 404:
+            return False
+
+        # if the request is successful & data is returned
+        elif response.status_code == 200:
+            # split the response into lines
+            suffixes = response.text.splitlines()
+
+            # loop through each line of the response
+            for line in suffixes:
+                # each line has hash suffix + number of times it appeared
+                suffix, count = line.split(':')
+
+                # compare to check if full password hash exists
+                if suffix == sha1_password[5:]:
+                    # return the number of times it was found
+                    return int(count)
+
+            # return 0 if the password was not found
+            return 0
+        else:
+            # print error if the API returns unexpected status
+            print(f"Error: API returned status code {response.status_code}")
+            return None
+
+    # handle any network errors during the API request
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Network error: Could not reach the API.\nDetails: {e}")
+        return None
+
+
+# function to check password strength
+def password_strength(password):
+    score = 0
+    # add score if password length is at least 8
+    if len(password) >= 8:
+        score += 1
+    # add score if password has uppercase letters
+    if re.search(r"[A-Z]", password):
+        score += 1
+    # add score if password has lowercase letters
+    if re.search(r"[a-z]", password):
+        score += 1
+    # add score if password has numbers
+    if re.search(r"[0-9]", password):
+        score += 1
+    # add score if password has special characters
+    if re.search(r"[@$!%*?&]", password):
+        score += 1
+    # return password strength based on score
+    if score <= 2:
+        return "Weak"
+    elif score == 3 or score == 4:
+        return "Medium"
+    else:
+        return "Strong"
+
+
+# ask the user to enter a password (input will be hidden for privacy)
+password = getpass.getpass("Enter the password to check (input will be hidden): ")
+
+# check if password is leaked in data breaches
+result = check_password_pwned(password)
+
+# if there was a network error, stop the program
+if result is None:
+    print("⚠ Could not complete the check due to a network error. Please try again later.")
+    exit()
+
+# Check the strength of the password
+strength = password_strength(password)
+
+# print the password strength
+print(f"\nPassword Strength: {strength}")
+
+# print the result of the leak check
+if result == 0:
+    print("✅ This password was NOT found in any known data breaches.")
+else:
+    print(f"⚠ This password was found {result} times in data breaches! You should change it immediately.")
+
+# if the password is weak, give user advice
+if strength == "Weak":
+    print("\n🔑 Tips to improve your password:")
+    print("- Use at least 12 characters")
+    print("- Add uppercase and lowercase letters")
+    print("- Include numbers and special characters")
